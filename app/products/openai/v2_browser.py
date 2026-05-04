@@ -1,6 +1,7 @@
 """V2 browser-cookie transport for Grok Web requests."""
 
 import base64
+import os
 import re
 import uuid
 from dataclasses import dataclass
@@ -65,6 +66,14 @@ class V2ChatResult:
 
 
 @dataclass(slots=True, frozen=True)
+class V2ImageChatResult:
+    """Grok 图片生成流的首张最终图片结果。"""
+
+    image_url: str
+    reasoning_content: str | None
+
+
+@dataclass(slots=True, frozen=True)
 class V2DownloadResult:
     """Grok 图片下载结果。"""
 
@@ -82,27 +91,24 @@ class V2ImageBytesResult:
 
 
 def load_config() -> V2BrowserConfig:
-    """从项目根目录 config.json 读取浏览器 Cookie 与指纹配置。"""
-    if not _CONFIG_PATH.exists():
-        raise ValidationError("Missing config.json for v2 browser transport", param="config")
-    try:
-        data = orjson.loads(_CONFIG_PATH.read_bytes())
-    except Exception as exc:
-        raise ValidationError("Invalid config.json", param="config") from exc
-    if not isinstance(data, dict):
-        raise ValidationError("config.json must be an object", param="config")
+    """从环境变量或项目根目录 config.json 读取浏览器 Cookie 与指纹配置。"""
+    data = _load_file_config()
 
-    cookie = str(data.get("cookie") or "").strip()
+    cookie = str(os.getenv("GROK_V2_COOKIE") or data.get("cookie") or "").strip()
     if not cookie:
-        raise ValidationError("config.json cookie cannot be empty", param="cookie")
+        raise ValidationError("GROK_V2_COOKIE or config.json cookie cannot be empty", param="cookie")
 
-    user_agent = str(data.get("user_agent") or _DEFAULT_UA).strip() or _DEFAULT_UA
+    user_agent = str(
+        os.getenv("GROK_V2_USER_AGENT") or data.get("user_agent") or _DEFAULT_UA
+    ).strip() or _DEFAULT_UA
     browser = (
-        str(data.get("browser") or "").strip()
+        str(os.getenv("GROK_V2_BROWSER") or data.get("browser") or "").strip()
         or browser_from_user_agent(user_agent)
         or "chrome136"
     )
-    output_raw = str(data.get("output_dir") or "images").strip() or "images"
+    output_raw = str(
+        os.getenv("GROK_V2_OUTPUT_DIR") or data.get("output_dir") or "images"
+    ).strip() or "images"
     output_dir = Path(output_raw)
     if not output_dir.is_absolute():
         output_dir = _ROOT / output_dir
@@ -112,6 +118,19 @@ def load_config() -> V2BrowserConfig:
         browser=browser,
         output_dir=output_dir,
     )
+
+
+def _load_file_config() -> dict:
+    """读取本地 config.json；云端使用环境变量时允许文件不存在。"""
+    if not _CONFIG_PATH.exists():
+        return {}
+    try:
+        data = orjson.loads(_CONFIG_PATH.read_bytes())
+    except Exception as exc:
+        raise ValidationError("Invalid config.json", param="config") from exc
+    if not isinstance(data, dict):
+        raise ValidationError("config.json must be an object", param="config")
+    return data
 
 
 def _merge_cookie(cookie: str) -> str:
@@ -266,6 +285,39 @@ async def send_chat(
     )
 
 
+async def send_chat_until_image(
+    *,
+    model: str,
+    mode_id,
+    message: str,
+    file_attachments: list[str] | None = None,
+) -> V2ImageChatResult:
+    """发送图片类 Chat 请求，拿到首张最终图片 URL 后立即返回。"""
+    adapter = StreamAdapter()
+    thinking_parts: list[str] = []
+    async for line in stream_chat(
+        model=model,
+        mode_id=mode_id,
+        message=message,
+        file_attachments=file_attachments,
+    ):
+        event_type, data = classify_line(line)
+        if event_type == "done":
+            break
+        if event_type != "data" or not data:
+            continue
+        raise_for_stream_error(data)
+        for event in adapter.feed(data):
+            if event.kind == "thinking":
+                thinking_parts.append(event.content)
+            elif event.kind == "image" and event.content:
+                return V2ImageChatResult(
+                    image_url=event.content,
+                    reasoning_content="".join(thinking_parts).strip() or None,
+                )
+    raise UpstreamError("V2 image chat returned no image URL")
+
+
 def extract_first_image_url(text: str) -> str:
     """从响应文本里提取第一张图片 URL。"""
     match = re.search(r"https://assets\.grok\.com/[^\s)]+", text or "")
@@ -337,12 +389,14 @@ __all__ = [
     "V2ImageBytesResult",
     "V2UploadResult",
     "V2ChatResult",
+    "V2ImageChatResult",
     "V2DownloadResult",
     "download_image",
     "extract_first_image_url",
     "fetch_image_bytes",
     "load_config",
     "send_chat",
+    "send_chat_until_image",
     "stream_chat",
     "upload_image_bytes",
     "upload_image_data_uri",
