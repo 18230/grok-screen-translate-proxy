@@ -1,6 +1,7 @@
 """V2 browser-cookie transport for Grok Web requests."""
 
 import base64
+import hashlib
 import os
 import re
 import uuid
@@ -150,6 +151,20 @@ def _cookie_value(cookie: str, name: str) -> str:
         if item.startswith(prefix):
             return item[len(prefix):]
     return ""
+
+
+def config_fingerprint() -> dict:
+    """返回浏览器态配置指纹，便于云端排查 Secret 注入，不暴露 Cookie 内容。"""
+    cfg = load_config()
+    cookie_hash = hashlib.sha256(cfg.cookie.encode("utf-8")).hexdigest()
+    return {
+        "cookie_length": len(cfg.cookie),
+        "cookie_hash_prefix": cookie_hash[:12],
+        "has_sso": bool(_cookie_value(cfg.cookie, "sso")),
+        "has_sso_rw": bool(_cookie_value(cfg.cookie, "sso-rw")),
+        "browser": cfg.browser,
+        "user_agent_prefix": cfg.user_agent[:32],
+    }
 
 
 def _browser_headers(
@@ -394,6 +409,7 @@ __all__ = [
     "download_image",
     "extract_first_image_url",
     "fetch_image_bytes",
+    "config_fingerprint",
     "load_config",
     "send_chat",
     "send_chat_until_image",

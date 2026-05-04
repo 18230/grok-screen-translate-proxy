@@ -13,6 +13,7 @@ from app.products.openai._format import make_chat_response
 from app.products.openai.chat import _extract_message
 from app.products.openai.schemas import ChatCompletionRequest
 from app.products.openai.v2_browser import (
+    config_fingerprint,
     download_image,
     extract_first_image_url,
     fetch_image_bytes,
@@ -142,6 +143,12 @@ async def v2_upload_image_json(req: V2UploadRequest):
     """上传 Data URI 图片，返回 Grok 文件 ID。"""
     result = await upload_image_data_uri(req.image)
     return JSONResponse({"file_id": result.file_id, "file_uri": result.file_uri})
+
+
+@router.get("/debug/config", dependencies=[Depends(verify_api_key)])
+async def v2_debug_config():
+    """返回 V2 浏览器态配置指纹，用于排查云端 Secret 注入。"""
+    return JSONResponse(config_fingerprint())
 
 
 @router.post("/images/upload-file", dependencies=[Depends(verify_api_key)])
