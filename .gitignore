@@ -37,6 +37,7 @@ env/
 
 # Environment Variables
 .env
+config.json
 
 # Logs
 logs/
@@ -45,6 +46,7 @@ logs/
 # Data
 data/
 app/data/
+images/
 
 # Testing
 .pytest_cache/
@@ -53,3 +55,4 @@ htmlcov/
 
 # Project specific
 .ace-tool/
+.grok2api.pid

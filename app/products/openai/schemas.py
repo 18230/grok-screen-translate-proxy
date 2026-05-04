@@ -29,6 +29,8 @@ class VideoConfig(BaseModel):
 class ChatCompletionRequest(BaseModel):
     model:               str
     messages:            list[MessageItem]
+    target_language:     str | None                 = None
+    target_language_name: str | None                = None
     stream:              bool | None                = None
     reasoning_effort:    str | None                 = None
     temperature:         float | None               = 0.8

@@ -398,10 +398,12 @@ def create_app() -> FastAPI:
     # Routers.
     from app.products.web import router as web_router
     from app.products.openai.router import router as openai_router
+    from app.products.openai.v2_router import router as openai_v2_router
     from app.products.anthropic.router import router as anthropic_router
 
     app.include_router(web_router)
     app.include_router(openai_router)
+    app.include_router(openai_v2_router)
     app.include_router(anthropic_router)
 
     # Static assets — new statics only.

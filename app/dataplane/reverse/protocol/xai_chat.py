@@ -37,7 +37,7 @@ def build_chat_payload(
             "viewportWidth":    2056,
         },
         "disableMemory":               not cfg.get_bool("features.memory", False),
-        "disableSearch":               False,
+        "disableSearch":               True,
         "disableSelfHarmShortCircuit": False,
         "disableTextFollowUps":        False,
         "enableImageGeneration":       True,
